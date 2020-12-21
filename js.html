@@ -1,0 +1,211 @@
+<script src="https://cdn.jsdelivr.net/npm/vue@2.6.12"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+
+<script>  
+  (function() {
+    var vm = new Vue({
+      el: '#app',
+      data: {
+        user: {},
+        loading: false,
+        loaded: false,
+        notesLoaded: false,
+        notes: [],
+        authenticated: false,
+        failedAuth: false,
+        students: [],
+        filter: '',
+        modalLoading: true,
+        student: {},
+        allParents: [],
+        parents: [],
+        enrollments: [],
+        classes: [],
+        schedule: [],
+        scheduleLoaded: false
+      },
+      created: function(){
+        google.script.run
+        .withSuccessHandler(function(e) {
+          vm.user.email = e.email;
+          vm.authenticated = e.authenticated;
+          vm.loading = true;
+          if(vm.authenticated) {
+            vm.triggerLoadStudents();
+          }
+          
+        })
+        .authenticateUser()
+      },
+      computed: {
+        filteredRows() {
+          return this.students.filter(row => {
+          const givenNames = row.givenName.toString().toLowerCase();
+          const familyNames = row.familyName.toString().toLowerCase();
+          const idNumbers = row.sourcedId.toString().toLowerCase();
+          const searchTerm = this.filter.toLowerCase();
+
+          return givenNames.includes(searchTerm) ||
+              familyNames.includes(searchTerm) ||
+              idNumbers.includes(searchTerm);
+          });
+        }
+      },
+      methods: {
+        triggerLoadStudents() {
+          google.script.run
+          .withSuccessHandler(function(e){
+          vm.loading = false;
+            vm.students = e.users;
+            vm.loaded = true;
+          })
+          .oneRosterApi("students", undefined, {"metadata.ell":true}, 6000, "familyName");
+        },
+        createModal(id) {
+          if (!vm.modalLoading) {
+            vm.modalLoading = true;
+          }         
+          vm.student = {};
+          vm.parents = [];
+          for (i=0; i<vm.students.length; i++) {
+            if (vm.students[i].userIds[0].identifier == id) {
+              vm.student = vm.students[i];
+            } 
+          }
+          if(!vm.allParents.length) {
+            try {
+              google.script.run
+              .withSuccessHandler(function(f){
+                vm.allParents = f.users;
+                for(i=0; i<vm.allParents.length; i++) {
+                  if(vm.allParents[i].sourcedId == (id+"g1") || vm.allParents[i].sourcedId == (id+"g2")) {
+                    vm.parents.push(vm.allParents[i]);
+                  }
+                }
+                vm.modalLoading = false;
+              })
+              .oneRosterApi("users", undefined, {role: "parent"});
+            } catch(e) {
+              console.log(e);
+            }    
+          }
+          else {
+              for(i=0; i<vm.allParents.length; i++) {
+                if(vm.allParents[i].sourcedId == (id+"g1") || vm.allParents[i].sourcedId == (id+"g2")) {
+                vm.parents.push(vm.allParents[i]);
+              }
+              vm.modalLoading = false;
+            }
+          }          
+          var elem = document.querySelector(".modal");
+          var modalContent = document.querySelector(".modal-content");
+          var instance = M.Modal.getInstance(elem);
+          instance.open();
+          document.getElementById('log').reset();
+        },
+        parentalContacts(p) {
+          var record;
+          if(p.phone) {
+              record = p.givenName + " " + p.familyName + " | " + p.phone;
+          } else {
+              record = p.givenName + " " + p.familyName + " | No Phone Number in Genesis";
+          }
+          return record;
+        },
+        loadNotes: function (sheet, filterId) {
+          vm.notesLoaded = false;
+          var filters = {StudentID: filterId.toString()};
+          google.script.run
+          .withSuccessHandler(function(e) {
+            var notes = JSON.parse(e);
+            for (n=0; n<notes.length; n++) {
+                var d = new Date(notes[n].Date_Of_Contact);
+                var t = new Date(notes[n].Time_Of_Contact);
+                notes[n].Date_Of_Contact = d.toLocaleDateString();
+                notes[n].Time_Of_Contact = t.toLocaleTimeString();
+            }
+            vm.notes = notes;
+            vm.notesLoaded = true;
+          })
+          .getNotesData(sheet, filters);
+        },
+        saveNote: function() {
+          let modal = document.querySelector("#modal2");
+          let instance = M.Modal.getInstance(modal);
+          let btn = document.querySelector("#saveButton");
+          let classes = btn.classList;
+          var inputs = document.getElementById("log").elements;
+          let data = [];
+          let packet = [];
+          let date = new Date();
+          let today = date.toLocaleDateString() + " " + date.toLocaleTimeString();
+          data.push(today, this.student.sourcedId);
+          for (i=0; i<inputs.length; i++) {
+              if(inputs[i].nodeName === "INPUT" || inputs[i].nodeName === "TEXTAREA") {
+                  data.push(inputs[i].value);
+              }
+          }
+          data.push(vm.user.email);
+          packet.push(data);
+          google.script.run
+          .withSuccessHandler(function(e) {
+              if(e) {
+                  if (classes.contains("scale-in")) {
+                      btn.classList.remove("scale-in");
+                      btn.classList.add("scale-out");
+                  }
+                  document.getElementById('log').reset();
+                  instance.close();
+                  M.toast({html: 'Note saved to database. <br> Thank you!'});
+              } 
+          })
+          .saveNote(packet);                    
+        },
+        deleteNote: function (uuid, index) {
+          google.script.run
+          .withSuccessHandler(function (e) {
+              vm.notes.splice(index, 1);
+          })
+          .deleteNote(uuid, vm.user.email)
+        },
+        loadEnrollments: function(id) {
+          vm.scheduleLoaded = false;
+          vm.schedule = [];
+          google.script.run
+          .withSuccessHandler(function(e){
+            vm.schedule = e.classes;
+            vm.scheduleLoaded = true;
+          })
+          .oneRosterApi("studentSchedule", id);
+        },
+        highlightMatches(text) {
+          const matchExists = text.toLowerCase().includes(this.filter.toLowerCase());
+          if (!matchExists) return text;
+
+          const re = new RegExp(this.filter, 'ig');
+          return text.replace(re, matchedText => `<strong class="green-text">${matchedText}</strong>`);
+        }
+      }
+    });
+  })();
+  
+  document.addEventListener('DOMContentLoaded', function() {
+    let today = new Date();
+    let options = {
+        container: 'body'
+    };
+    M.AutoInit();
+    var elems = document.querySelectorAll('.datepicker');
+    var timeelems = document.querySelectorAll('.timepicker');
+    var timeinstances = M.Timepicker.init(timeelems, options);
+    var instances = M.Datepicker.init(elems, options);
+    instances[0].setDate(new Date());
+  });
+  var ta = document.querySelector("#textarea1");
+  var saveNote = document.querySelector("#saveButton");
+  ta.addEventListener('focus', function() {
+      let classes = saveNote.classList;
+      saveNote.classList.remove('scale-out');
+      saveNote.classList.add('scale-in');
+  })
+</script>

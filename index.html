@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+    <?!= include('css'); ?>
+  </head>
+  <body>
+      <div id="app">
+        <nav>
+            <div class="nav-wrapper green darken-4">
+                <a href="#" class="brand-logo center"><img src="https://www.longbranch.k12.nj.us/cms/lib/NJ01001766/Centricity/Template/GlobalAssets/images///logos/LongBranch.png" alt="Long Branch Public Schools Green Wave Logo" style="width: 50%;"></a>
+                <!-- <a href="#" data-target="mobile-demo" class="sidenav-trigger"><i class="material-icons">menu</i></a> -->
+                <ul class="right hide-on-med-and-down">
+                    <!-- <li><a href="#">Students</a></li>
+                    <li><a href="#">Parents</a></li>
+                    <li><a href="#">Staff</a></li> -->
+                </ul>
+            </div>
+        </nav>
+
+        <ul class="sidenav" id="mobile-demo">
+            <!-- <li><a href="#">Students</a></li>
+            <li><a href="#">Parents</a></li>
+            <li><a href="#">Staff</a></li> -->
+        </ul>
+        <div class="container">
+            <p class="center-align" v-if="!authenticated">Please wait while we confirm your privileges...</p>
+            <p class="center-align" v-if="failedAuth"><strong>Oops! This tool is for teachers only.</strong></p>
+            <p class="center-align" v-if="loading">Permission Granted! Please wait while we gather some data...</p>
+        </div>
+        <div class="container" v-show="!loaded">
+            <div class="progress">
+                <div class="indeterminate"></div>
+            </div>
+        </div>
+        <transition name="fade">
+            <div class="container" v-show="loaded" v-cloak>
+                <div class="row">
+                    <form class="col s12">
+                      <div class="row">
+                        <div class="input-field col s12">
+                          <input id="filter" type="search" class="validate" v-model="filter">
+                          <label for="filter"><i class="material-icons">search</i></label>
+                          <span class="helper-text" data-error="" data-success="">Enter a name or ID number</span>
+                        </div>
+                      </div>
+                    </form>
+                </div>
+                <table id="userTable" class="highlight">
+                    <thead>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Grade</th>
+                        <!-- <th>ELL</th> -->
+                        <th>School</th>
+                        <!--<th>Homeroom</th>-->
+                        <!--<th>Role</th>-->
+                        <th>ID</th>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(u, index) in filteredRows" :key="`employee-${index}`" @click="createModal(`${u.sourcedId}`)">
+                            <td>{{index + 1}}</td>
+                            <td v-html="highlightMatches(`${u.familyName}, ${u.givenName}`)"></td>
+                            <td>{{u.grades[0]}}</td>
+                            <!--<td v-html="trueToChecks(`${u['metadata.ell']}`)"></td>-->
+                            <td>{{u.orgs[0].sourcedId}}</td>
+                            <!--<td v-html="highlightMatches(u['metadata.homeroom'])"></td>-->
+                            <!--<td>{{u.role}}</td> -->
+                            <td v-html="highlightMatches(u.sourcedId)"></td>
+                        </tr> 
+                    </tbody>
+                </table>
+            </div>
+        </transition>
+        <div class="modal">
+            <div class="modal-content">
+                <p v-if="modalLoading" class="center-align">Loading Student Data...</p>
+                <div class="progress" v-show="modalLoading">
+                    <div class="indeterminate"></div>
+                </div>
+                <h5 v-show="!modalLoading">{{student.givenName}} {{student.familyName}}</h5>
+                <p v-for="p in parents" v-html="parentalContacts(p)" v-show="!modalLoading"></p>
+                <!-- Modal Trigger -->
+                <div class="row" v-show="!modalLoading">
+                    <div class="col s12 m4">
+                        <a id="reviewBtn" class="std-btn center-align waves-effect waves-light btn modal-trigger green darken-4" href="#modal3" @click="loadNotes('notes',`${student.sourcedId}`)">Review Notes</a>
+                    </div>
+                    <div class="col s12 m4">
+                        <a id="createBtn" class="std-btn center-align waves-effect waves-light btn modal-trigger green darken-4" href="#modal2">Create Note</a>
+                    </div>
+                    <div class="col s12 m4">
+                        <a id="viewSched" class="std-btn center-align waves-effect waves-light btn modal-trigger green darken-4" href="#modal4" @click="loadEnrollments(`${student.sourcedId}`)">View Schedule</a>
+                    </div>
+                </div>
+                
+
+            </div>
+            <div class="modal-footer">
+                <a href="#!" class="modal-close waves-effect waves-green btn-flat">Close</a>
+            </div>
+        </div>
+        <!-- Modal Structure -->
+        <div id="modal2" class="modal bottom-sheet">
+            <div class="fixed-action-btn">
+                <a id="saveButton" @click="saveNote()" class="btn-floating btn-large waves-effect waves-light green darken-3 scale-transition scale-out">
+                    <i class="large material-icons">save</i>
+                </a>
+            </div>
+            <div class="modal-content">
+                <div class="container">
+                    <h5>Creating Contact Note for {{student.givenName}} {{student.familyName}}</h5>
+                    <div class="row">
+                        <form id="log" class="col s12">
+                            <div class="row">
+                                <div class="input-field col s12 m6">
+                                    <input id="date" type="text" class="datepicker">
+                                    <label for="date">Date of Contact</label>
+                                </div>
+                                <div class="input-field col s12 m6">
+                                    <input id="timepicker" type="text" class="timepicker">
+                                    <label for="timepicker">Time of Contact</label>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="input-field col s12">
+                                    <textarea id="textarea1" class="materialize-textarea"></textarea>
+                                    <label for="textarea1">Contact Notes</label>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Modal Structure -->
+        <div id="modal3" class="modal bottom-sheet modal-fixed-footer">
+            <div class="modal-content">
+                <div class="container center-align" v-if="!notesLoaded"> 
+                    <div class="preloader-wrapper big active">
+                        <div class="spinner-layer spinner-green-only">
+                            <div class="circle-clipper left">
+                                <div class="circle"></div>
+                            </div>
+                            <div class="gap-patch">
+                                <div class="circle"></div>
+                            </div>
+                            <div class="circle-clipper right">
+                                <div class="circle"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="container" v-if="notesLoaded">
+                    <h6>Existing Notes for {{student.givenName}} {{student.familyName}}</h6>
+                    <table class="highlight">
+                        <thead>
+                            <th>#</th>
+                            <th>Date</th>
+                            <th>Time</th>
+                            <th>Note</th>
+                            <th>Author</th>
+                            <th></th>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(n, index) in notes" :key="`note-${index}`" :data-id="`${n.uuid}`">
+                                <td>{{index + 1}}</td>
+                                <td>{{n.Date_Of_Contact}}</td>
+                                <td>{{n.Time_Of_Contact}}</td>
+                                <td>{{n.Note}}</td>
+                                <td>{{n.Author}}</td>
+                                <td><i class="material-icons" @click="deleteNote(`${n.uuid}`, `${index}`)">delete</i></td>
+
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a href="#!" class="modal-close waves-effect waves-green btn-flat">Close</a>
+            </div>
+        </div>
+        <!-- Modal Structure -->
+        <div id="modal4" class="modal bottom-sheet modal-fixed-footer">
+            <div class="modal-content">
+                <div class="container center-align" v-if="!scheduleLoaded"> 
+                    <div class="preloader-wrapper big active">
+                        <div class="spinner-layer spinner-green-only">
+                            <div class="circle-clipper left">
+                                <div class="circle"></div>
+                            </div>
+                            <div class="gap-patch">
+                                <div class="circle"></div>
+                            </div>
+                            <div class="circle-clipper right">
+                                <div class="circle"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="container" v-if="scheduleLoaded">
+                    <h6>Schedule for {{student.givenName}} {{student.familyName}}</h6>
+                    <table class="highlight">
+                        <thead>
+                            <th>Title</th>
+                            <th>Period</th>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(c, index) in schedule" :key="`class-${index}`" >
+                                <td>{{c.title}}</td>
+                                <td>{{c.periods[0]}}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a href="#!" class="modal-close waves-effect waves-green btn-flat">Close</a>
+            </div>
+        </div>
+    </div>
+  
+    <?!= include('js'); ?>
+  </body>
+</html>
+
+
